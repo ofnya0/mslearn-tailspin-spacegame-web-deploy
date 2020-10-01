@@ -20,9 +20,9 @@ stages:
   - job: 'Build'
     displayName: 'Build job'
     pool:
-      vmImage: 'ubuntu-18.04'
+      vmImage: 'ubuntu-18.04' #Build machine (Agent) is running Ubuntu
       demands:
-      - npm
+      - npm #npm is package name for Node.js
 
     variables:
       wwwrootDir: 'Tailspin.SpaceGame.Web/wwwroot'
@@ -34,27 +34,35 @@ stages:
       inputs:
         version: '$(dotnetSdkVersion)'
 
+    #Run npm install to install the Node.js packages as defined in package.json
     - task: Npm@1
       displayName: 'Run npm install'
       inputs:
         verbose: false
 
+    #Run node-sass to convert Sass (.scss) files to CSS(.css) files
+    #The project usesnSass to make it easier to author Cascading Style Sheets (CSS) files
     - script: './node_modules/.bin/node-sass $(wwwrootDir) --output $(wwwrootDir)'
       displayName: 'Compile Sass assets'
 
+    #Run gulp to minify JavaScrit and CSS files
     - task: gulp@1
       displayName: 'Run gulp tasks'
 
+    #Print build info to wwwroot directory to help QA identify the build
     - script: 'echo "$(Build.DefinitionName), $(Build.BuildId), $(Build.BuildNumber)" > buildinfo.txt'
       displayName: 'Write build info'
       workingDirectory: $(wwwrootDir)
 
+    #Run dotnet restore to restore or install the project's dependencies
     - task: DotNetCoreCLI@2
       displayName: 'Restore project dependencies'
       inputs:
         command: 'restore'
         projects: '**/*.csproj'
 
+    #Run dotnet build to build the app
+    #the pipeline translates this task to "dotnet build MyProject.csproj --no-restore --configuration Release"
     - task: DotNetCoreCLI@2
       displayName: 'Build the project - $(buildConfiguration)'
       inputs:
@@ -62,6 +70,16 @@ stages:
         arguments: '--no-restore --configuration $(buildConfiguration)'
         projects: '**/*.csproj'
 
+   # Run Unit tests
+   # - task: DotNetCoreCLI@2
+   #  displayName: 'Run unit tests - $(buildConfiguration'
+   #   inputs:
+   #     command: 'test'
+   #     arguments: '--no-build --configuration $(buildConfiguration)'
+   #     projects: '**/*.Tests.csproj'
+
+    #Run dotnet publish to package the application's result (including its dependencies) 
+    # into a folder as a .zip file
     - task: DotNetCoreCLI@2
       displayName: 'Publish the project - $(buildConfiguration)'
       inputs:
@@ -70,10 +88,13 @@ stages:
         publishWebProjects: false
         arguments: '--no-build --configuration $(buildConfiguration) --output $(Build.ArtifactStagingDirectory)/$(buildConfiguration)'
         zipAfterPublish: true
-
+ 
+    #Publish the .zip file to Azure pipelines
     - publish: '$(Build.ArtifactStagingDirectory)'
       artifact: drop
 
+    #Runs the stage only when the previous stage succeeds and the current branch is release
+    #This ensures that release features are deployed only to Dev
 - stage: 'Dev'
   displayName: 'Deploy to the dev environment'
   dependsOn: Build
@@ -100,9 +121,11 @@ stages:
             displayName: 'Azure App Service Deploy: website'
             inputs:
               azureSubscription: 'Resource Manager - Tailspin - Space Game'
-              appName: '$(WebAppNameDev)'
+              appName: '$(WebAppNameDev)' #uses AebAppNameDev varibale to deploy to app instance that's associated with Dev environment
               package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
 
+  #This stage defines a condition that runs the stage only when the build reason equals Schedule.
+  #If this condition is false the stage is skipped by prior stages continue to run
 - stage: 'Test'
   displayName: 'Deploy to the test environment'
   dependsOn: Dev
@@ -127,6 +150,7 @@ stages:
               appName: '$(WebAppNameTest)'
               package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip' 
 
+ #Deploy to staging environment
 - stage: 'Staging'
   displayName: 'Deploy to the staging environment'
   dependsOn: Test
