@@ -133,3 +133,42 @@ stages:
               azureSubscription: 'Resource Manager - Tailspin - Space Game'
               appName: '$(WebAppNameStaging)'
               package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
+
+- stage: 'Staging'
+  displayName: 'Deploy to de staging enviro'
+  dependsOn: Test
+  jobs:
+  - deployment: Deploy
+    pool: 
+      vmImage: 'ubuntu-18.04'
+    environment: staging
+    variables:
+    - group: 'Release'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+          - task: AzureWebApp@1
+            displayName: 'Azure App Servive Deploy: website'
+            inputs:
+              azureSubscription: 'Resource Manager - Tailspin - Space Game'
+              deployToSlotOrASE: 'true' #when set to true, deploys to an existing deployment slot
+              resourceGroupName: 'tailsping-space-game-rg' #specifies name of resource group. this value is required when deployToSlot is set to true
+              slotName: 'swap'
+              appName: '$(WebAppNameStaging)'
+              package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
+          - task: AzureAppServiceManage@0 #swaps the deployment slots
+            displayName: 'Swap deployment slots'
+            inputs:
+              azureSubscription: 'Resource Manager - Tailspin - Space Game'
+              resourceGroupName: 'tailspin-space-game-rg'
+              webAppName: '$(WebAppNameStaging)'
+              sourceSlot: 'swap'         #specifies the
+              targetSlot: 'production'   #slots to swap
+              action: 'Swap Slots'       #specifies the action to take. Specifies to swap the source and target slots
+
+              #the above configuration alweays deploys to the swap slot . It the swaps the prod and swap slots.
+              # The sap process ensures that PROD points to the more recent deployment
+
